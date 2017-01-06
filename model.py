@@ -1,5 +1,5 @@
 from layers import LSTM, Layer, EmbeddingLayer, BiDirLSTM
-from utils  import VarScopeClass, NameScopeClass, preprocess, read_data
+from utils_  import VarScopeClass, NameScopeClass, preprocess, read_data
 
 import tensorflow as tf
 import numpy as np
@@ -58,10 +58,10 @@ class Generator(object, metaclass=VarScopeClass):
 		# Calculate sample loss statistics
 		sparsity   = tf.reduce_sum(z, 0) 		
 		# selection  = tf.to_float(shape[0]) / (sparsity + 1)
-		self.zsum  = sparsity# + selection					  # Sparsity			 	
+		self.zsum  = sparsity# + selection                    # Sparsity			 	
 		self.zdiff = tf.reduce_sum(tf.abs(z[1:] - z[:-1]), 0) # Coherency
 
-		# Maximize entropy wrt. binomial sampling (i.e. push probabilities toward [0,1])
+		# Push probabilities toward [0,1] values via negative xentropy
 		self.loss = -loss_f(probs, z) * pad_mask		
 		self.z 	  = tf.stop_gradient(z) 					
 		
@@ -119,7 +119,7 @@ class Encoder(object, metaclass=VarScopeClass):
 		order  = lambda v: tf.concat_v2(tf.dynamic_partition(v[0], v[1], 2), 0)
 		inds   = tf.transpose(mask,[1,0])
 		length = tf.reduce_sum(1-mask, 0)
-		tf.summary.histogram('length',length)
+
 		# Map the reordering function over all batch samples, changing the 
 		# time / batch -major ordering of the tensor appropriately
 		signal  = tf.expand_dims(samples, -1) * self.embeddings
@@ -146,6 +146,7 @@ class Encoder(object, metaclass=VarScopeClass):
 		optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate) 
 		self.train_e = optimizer.minimize(cost_enc,	var_list=variables)
 
+		tf.summary.histogram('length',length)
 		tf.summary.histogram('Loss_Vec',self.loss_vec)
 		tf.summary.histogram('Predictions', preds[:,FLAGS.aspect])
 		tf.summary.histogram('Y', self.placeholders['y'][:,FLAGS.aspect])
