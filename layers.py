@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf 
 import gzip
 
-from utils_ import create_variables
+from utils import create_variables
 
 
 class EmbeddingLayer(object):

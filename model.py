@@ -1,5 +1,5 @@
 from layers import LSTM, Layer, EmbeddingLayer, BiDirLSTM, Layer2
-from utils_  import preprocess, read_data, create_gradients
+from utils  import preprocess, read_data, create_gradients
 
 import tensorflow as tf
 import numpy as np
@@ -258,7 +258,7 @@ class Model(object):
 									self.generator.train_g, self.encoder.train_e, 
 									self.generator.reg, self.generator.obj, 
 									self.encoder.loss, self.generator.z, 
-									self.global_step, self.generator.probs],
+									self.global_step],
 									feed_dict=self.train_fd(bx, by))
 				writer.add_summary(result[0], result[7])
 				
