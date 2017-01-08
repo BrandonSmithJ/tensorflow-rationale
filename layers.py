@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf 
 import gzip
 
-from utils import create_variables
+from utils_ import create_variables
 
 
 class EmbeddingLayer(object):
@@ -66,16 +66,21 @@ class Layer(object):
     def __init__(self, in_size, out_size, activation='tanh', name='', **kwargs):
         self.in_size, self.out_size = in_size, out_size
         self.W, self.b  = create_variables([in_size, out_size], name)
+        self.activation = tf.nn.softmax#getattr(tf, activation) 
+
+    def forward(self, x):    
+        vals  = tf.nn.xw_plus_b(x, self.W, self.b, name='Wx_b')
+        return self.activation(vals)
+
+class Layer2(object):
+
+    def __init__(self, in_size, out_size, activation='tanh', name='', **kwargs):
+        self.in_size, self.out_size = in_size, out_size
+        self.W, self.b  = create_variables([in_size, out_size], name)
         self.activation = getattr(tf, activation) 
 
     def forward(self, x):    
-        # Reshape to two dimensions, multiply, reshape back to n-dimensional tensor  
-        x2d   = tf.reshape(x, [-1, self.in_size])
-        vals  = tf.nn.xw_plus_b(x2d, self.W, self.b, name='Wx_b')
-        shape = tf.shape(x)
-        shape = tf.slice(shape, [0], [tf.shape(shape)[0]-1])
-        shape = tf.concat_v2([shape, [self.out_size]], 0)
-        vals  = tf.reshape(vals, shape)
+        vals = tf.map_fn(lambda z: tf.nn.xw_plus_b(z, self.W, self.b), x, dtype=tf.float32)
         return self.activation(vals)
 
 
@@ -90,12 +95,13 @@ class LSTM(object):
         self.state = None
         self.batch = batch_size
 
-    def forward(self, x, length=None):        
-        x.set_shape([None, None, self.in_size])
+    def forward(self, x, mask, length=None):        
+        x.set_shape([None, self.batch, self.in_size])
         vals, self.state = tf.nn.dynamic_rnn(self.cell, x, 
             time_major     = True, 
             dtype          = tf.float32,
             sequence_length= length,
+            # initial_state  = self.state,
         )
         return vals
 
@@ -114,11 +120,13 @@ class BiDirLSTM(object):
     def forward(self, x, length=None):        
         used   = tf.sign(tf.reduce_max(tf.abs(x), reduction_indices=2))
         length = tf.reduce_sum(used, reduction_indices=0)
-        
+        self.l = length
         vals, self.state = tf.nn.bidirectional_dynamic_rnn(self.fcell, self.bcell, x, 
             time_major     = True, 
             dtype          = tf.float32,
             sequence_length= tf.to_int32(length),
+            # initial_state_fw = self.state[0],
+            # initial_state_bw = self.state[1],
         )
         return tf.concat_v2(vals, 2)
 

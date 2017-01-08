@@ -1,5 +1,5 @@
-from layers import LSTM, Layer, EmbeddingLayer, BiDirLSTM
-from utils_  import VarScopeClass, NameScopeClass, preprocess, read_data
+from layers import LSTM, Layer, EmbeddingLayer, BiDirLSTM, Layer2
+from utils_  import preprocess, read_data, create_gradients
 
 import tensorflow as tf
 import numpy as np
@@ -9,15 +9,15 @@ flags = tf.app.flags
 flags.DEFINE_integer("aspect", 0, "Class to predict [0]")
 flags.DEFINE_integer("hidden", 200, "Number of hidden nodes [200]")
 flags.DEFINE_integer("depth", 2, "Depth of the Encoder network [2]")
-flags.DEFINE_integer("batch", 256, "Number of elements per batch [128]")
+flags.DEFINE_integer("batch", 256, "Number of elements per batch [256]")
 flags.DEFINE_integer("maxlen", 256, "Maximum text length allowed [256]")
-flags.DEFINE_integer("epochs", 50, "Number of training epochs [50]")
+flags.DEFINE_integer("epochs", 500, "Number of training epochs [50]")
 flags.DEFINE_integer("seed", None, "Random seed [None]")
 flags.DEFINE_float("keep_prob", 0.9, "Probability to keep during dropout [0.9]")
-flags.DEFINE_float("l2_reg", 1e-6, "L2 regularization parameter [1e-6]")
-flags.DEFINE_float("learning_rate", 5e-4, "Learning rate for adam optimization [5e-4]")
-flags.DEFINE_float("sparsity", 3e-4, "Sparsity coefficient (higher=fewer Generator selections)")
-flags.DEFINE_float("coherency", 6e-4, "Coherency coefficient (higher=longer sequences)")
+flags.DEFINE_float("l2_reg", 1e-7, "L2 regularization parameter [1e-7]")
+flags.DEFINE_float("learning_rate", 2e-4, "Learning rate for adam optimization [2e-4]")
+flags.DEFINE_float("sparsity", 4e-3, "Sparsity coefficient (higher=fewer Generator selections)")
+flags.DEFINE_float("coherency", 8e-3, "Coherency coefficient (higher=longer sequences)")
 flags.DEFINE_string("embedding", "", "Path to word embeddings")
 flags.DEFINE_string("training", "", "Path to training data")
 flags.DEFINE_string("testing", "", "Path to testing data")
@@ -27,130 +27,142 @@ flags.DEFINE_string("log", "log", "Path to save log files")
 FLAGS = flags.FLAGS
 
 
-class Generator(object, metaclass=VarScopeClass):
-	
-	def __init__(self, embeddings, pad_mask, placeholders, net_kwargs,
-					dropout, loss_f):
-		self.placeholders = placeholders
+class Generator(object):
 
-		out_kwargs = dict(net_kwargs)
-		out_kwargs['in_size'], out_kwargs['out_size'] = out_kwargs['out_size']*2, 1
-		out_kwargs['activation'] = 'sigmoid'
-		output  = Layer(name='Generator_Output', **out_kwargs)
-		network = BiDirLSTM(**net_kwargs)
+	def __init__(self, embeddings, pad_mask, placeholders, net_kwargs, dropout, loss_f):
 
-		# Pass sequence through the network, and bound outputs at (0,1)
-		h = dropout( network.forward(embeddings) ) 
-		probs = output.forward(h)
-		shape = tf.shape(embeddings)[:2]
-		probs = tf.reshape(probs, shape)
-		probs = tf.maximum(tf.minimum(probs, 1-1e-8), 1e-8)
+		with tf.variable_scope('Generator'):
+			self.placeholders = placeholders
 
-		# Binomial sampling not yet implemented in tensorflow.... 
-		# binomial   = tf.contrib.distributions.Binomial(n=1, p=self.probs)
-		# z = binomial.sample(probs.get_shape())
+			out_kwargs = dict(net_kwargs)
+			out_kwargs['in_size'], out_kwargs['out_size'] = out_kwargs['out_size']*2, 1
+			out_kwargs['activation'] = 'sigmoid'
+			output  = Layer2(name='Generator_Output', **out_kwargs)
+			network = BiDirLSTM(**net_kwargs)
 
-		# Instead, sample the uniform distribution and construct it manually
-		uniform = tf.contrib.distributions.Uniform()
-		samples = uniform.sample(tf.shape(probs))	
-		z = tf.to_float(tf.less(samples, probs))	
+			# Pass sequence through the network, and bound outputs at (0,1)
+			h = dropout( network.forward(embeddings) ) 
+			b_major = tf.transpose(h, [1,0,2])
+			probs = output.forward( b_major )
+			probs = tf.transpose(probs, [1,0,2])
+			shape = tf.shape(embeddings)[:2]
+			probs = tf.reshape(probs, shape) 
 
-		# Calculate sample loss statistics
-		sparsity   = tf.reduce_sum(z, 0) 		
-		# selection  = tf.to_float(shape[0]) / (sparsity + 1)
-		self.zsum  = sparsity# + selection                    # Sparsity			 	
-		self.zdiff = tf.reduce_sum(tf.abs(z[1:] - z[:-1]), 0) # Coherency
+			# Binomial sampling not yet implemented in tensorflow.... 
+			# binomial   = tf.contrib.distributions.Binomial(n=1, p=self.probs)
+			# z = binomial.sample(probs.get_shape())
 
-		# Push probabilities toward [0,1] values via negative xentropy
-		self.loss = -loss_f(probs, z) * pad_mask		
-		self.z 	  = tf.stop_gradient(z) 					
-		
-		self.regularize = self.zsum * placeholders['sparsity'] + \
-					 	  self.zdiff* placeholders['coherency']
+			# Instead, sample the uniform distribution and construct it manually
+			uniform = tf.contrib.distributions.Uniform()
+			samples = uniform.sample(tf.shape(probs))	
+			z = tf.to_float(tf.less(samples, probs)) * pad_mask	
 
-		tf.summary.histogram('zsum',self.zsum)
-		tf.summary.histogram('zdiff', self.zdiff)
-		tf.summary.histogram('probs', tf.reduce_mean(probs, 0))
-		# tf.summary.scalar('sparse selection penalty', tf.reduce_mean(selection))
-		tf.summary.scalar('zsum', tf.reduce_mean(self.zsum))
-		tf.summary.scalar('zdiff', tf.reduce_mean(self.zdiff))
+			# Calculate sample loss statistics
+			sparsity   = tf.reduce_sum(z, 0) 		
+			selection  = tf.reduce_sum(pad_mask, 0)  / (sparsity + 1)
+			self.zsum  = sparsity #+ selection ** .5					  # Sparsity			 	
+			self.zdiff = tf.reduce_sum(tf.abs(z[1:] - z[:-1]),0)+ z[0] +\
+									   tf.map_fn(lambda q:q[0][q[1]-1], 
+									   			(tf.transpose(z, [1,0]), 
+											  	 tf.to_int32(tf.reduce_sum(pad_mask,0))),
+										dtype=tf.float32) * pad_mask[-1] # Coherency (plus beginning / end samples)
+
+			# Push probabilities toward [0,1] values via negative xentropy
+			self.loss = -loss_f(probs, z) * pad_mask		
+			self.z 	  = tf.stop_gradient(z) 					
+			
+			self.regularize = (self.zsum * placeholders['sparsity'] + 
+						 	  self.zdiff * placeholders['coherency']) / tf.reduce_sum(pad_mask, 0) 
+
+			tf.summary.histogram('samples', tf.reduce_mean(samples, 1))
+			tf.summary.histogram('zsum',self.zsum)
+			tf.summary.histogram('zdiff', self.zdiff)
+			tf.summary.histogram('sample_probability', tf.reduce_mean(probs, 0))
+			tf.summary.histogram('sample_distribution', tf.reduce_mean(probs, 1))
+			tf.summary.scalar('sparse selection penalty', tf.reduce_mean(selection))
+			tf.summary.scalar('zsum', tf.reduce_mean(self.zsum))
+			tf.summary.scalar('zdiff', tf.reduce_mean(self.zdiff))
+			tf.summary.image('probabilities', tf.expand_dims(tf.expand_dims(probs*pad_mask, -1),0))
+			tf.summary.image('samples', tf.expand_dims(tf.expand_dims(z, -1),0))
+			tf.summary.scalar('max_prob', tf.reduce_max(probs))
 
 
 	def create_minimization(self, loss_vec, step):
-		variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Generator')
-		l2_cost   = tf.add_n([tf.nn.l2_loss(v) for v in variables])
+		with tf.variable_scope('Generator/'):
+			variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Generator')
+			l2_cost   = tf.add_n([tf.nn.l2_loss(v) for v in variables])
 
-		cost_vec = loss_vec + self.regularize + l2_cost*self.placeholders['lambda']
-		cost_gen = tf.reduce_mean(cost_vec * tf.reduce_sum(self.loss, 0))
-		self.obj = tf.reduce_mean(loss_vec + self.regularize)
-		self.reg = tf.reduce_mean(self.regularize)
+			cost_vec = loss_vec + self.regularize 
+			cost_gen = tf.reduce_mean(cost_vec * tf.reduce_sum(self.loss, 0))+ l2_cost*self.placeholders['lambda']
+			self.obj = tf.reduce_mean(loss_vec + self.regularize)
+			self.reg = tf.reduce_mean(self.regularize)
 
-		optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
-		self.train_g = optimizer.minimize(cost_gen, var_list=variables, global_step=step)
-		
-		tf.summary.scalar('Generator_Cost', cost_gen)
-		tf.summary.scalar('Objective', self.obj)
+			self.train_g = create_gradients(cost_gen, variables, FLAGS.learning_rate, step)
 
+			tf.summary.scalar('Generator_Cost', cost_gen)
+			tf.summary.scalar('Objective', self.obj)
 
 
-class Encoder(object, metaclass=VarScopeClass):
 
-	def __init__(self, embeddings, pad_mask, placeholders, net_kwargs,
-					dropout, loss_f):
+class Encoder(object):
 
-		out_kwargs = dict(net_kwargs)
-		out_kwargs['in_size'], out_kwargs['out_size'] = out_kwargs['out_size'], \
-			placeholders['y'].get_shape().as_list()[1]
-		out_kwargs['activation'] = 'sigmoid'
-		self.output_layer = Layer(name='Encoder_Output', **out_kwargs)
-		self.network 	  = LSTM(**net_kwargs)
-		self.embeddings   = embeddings
-		self.placeholders = placeholders
-		self.pad_mask 	  = pad_mask
-		self.dropout 	  = dropout
-		self.loss_f 	  = loss_f
+	def __init__(self, embeddings, pad_mask, placeholders, net_kwargs, dropout, loss_f):
+		with tf.variable_scope('Encoder'):
+
+			out_kwargs = dict(net_kwargs)
+			out_kwargs['in_size'], out_kwargs['out_size'] = out_kwargs['out_size'], \
+				placeholders['y'].get_shape().as_list()[1]
+			out_kwargs['activation'] = 'sigmoid'
+			self.output_layer = Layer(name='Encoder_Output', **out_kwargs)
+			self.network 	  = LSTM(**net_kwargs)
+			self.embeddings   = embeddings
+			self.placeholders = placeholders
+			self.pad_mask 	  = pad_mask
+			self.dropout 	  = dropout
+			self.loss_f 	  = loss_f
 
 
 	def create_minimization(self, samples):
-		# Due to sparse nature of samples, the tensor needs to be reordered
-		# with non-zero frames first. This ensures RNN sequences are calculated
-		# over only the valid frames in the current sampling
-		mask   = tf.to_int32(1 - samples * self.pad_mask)
-		order  = lambda v: tf.concat_v2(tf.dynamic_partition(v[0], v[1], 2), 0)
-		inds   = tf.transpose(mask,[1,0])
-		length = tf.reduce_sum(1-mask, 0)
+		with tf.variable_scope('Encoder', reuse=True):
 
-		# Map the reordering function over all batch samples, changing the 
-		# time / batch -major ordering of the tensor appropriately
-		signal  = tf.expand_dims(samples, -1) * self.embeddings
-		b_major = tf.transpose(signal, [1,0,2])
-		ordered = tf.map_fn(order, (b_major, inds), dtype=tf.float32)
-		t_major = tf.transpose(ordered, [1,0,2])
-		
-		# Pass the samples through the network, averaging over all RNN timesteps
-		# for the final activation. (Also possible to use gather with lengths,
-		# but currently requires sparse operations which is difficult for TF to
-		# automatically apply a gradient to)
-		h_all  = self.network.forward(t_major, length)
-		h_last = tf.reduce_sum(h_all, 0) / tf.expand_dims(tf.maximum(tf.to_float(length),1),-1)
-		preds  = self.preds = self.output_layer.forward( self.dropout(h_last) )
+			# Due to sparse nature of samples, the tensor needs to be reordered
+			# with non-zero frames first. This ensures RNN sequences are calculated
+			# over only the valid frames in the current sampling
+			mask   = tf.to_int32(1 - samples * self.pad_mask)
+			order  = lambda v: tf.concat_v2(tf.dynamic_partition(v[0], v[1], 2), 0)
+			inds   = tf.transpose(mask,[1,0])
+			length = tf.reduce_sum(1-mask, 0)
 
-		loss_mat = self.loss_f(preds, self.placeholders['y'])
-		if FLAGS.aspect == -1:  self.loss_vec = tf.reduce_mean(loss_mat, 1)
-		else:			 		self.loss_vec = loss_mat[:, FLAGS.aspect]
+			# Map the reordering function over all batch samples, changing the 
+			# time / batch -major ordering of the tensor appropriately
+			signal  = tf.expand_dims(samples, -1) * self.embeddings
+			b_major = tf.transpose(signal, [1,0,2])
+			ordered = tf.map_fn(order, (b_major, inds), dtype=tf.float32)
+			t_major = tf.transpose(ordered, [1,0,2])
 
-		self.loss = tf.reduce_mean(self.loss_vec)
-		variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Encoder')
-		l2_cost   = tf.add_n([tf.nn.l2_loss(v) for v in variables])
-		cost_enc  = self.loss + l2_cost * self.placeholders['lambda']
-		optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate) 
-		self.train_e = optimizer.minimize(cost_enc,	var_list=variables)
+			# Pass the samples through the network, averaging over all RNN timesteps
+			# for the final activation. (Also possible to use gather with lengths,
+			# but currently requires sparse operations which is difficult for TF to
+			# automatically apply a gradient to)
+			h_all  = self.network.forward(t_major, 1-mask, length)
+			h_last = tf.reduce_sum(h_all, 0) / tf.expand_dims(tf.maximum(tf.to_float(length),1),-1)
+			preds  = self.preds = self.output_layer.forward( self.dropout(h_last) )
 
-		tf.summary.histogram('length',length)
-		tf.summary.histogram('Loss_Vec',self.loss_vec)
-		tf.summary.histogram('Predictions', preds[:,FLAGS.aspect])
-		tf.summary.histogram('Y', self.placeholders['y'][:,FLAGS.aspect])
-		tf.summary.scalar('Encoder Cost', cost_enc)
+			loss_mat = tf.sqrt(tf.abs(self.loss_f(preds, self.placeholders['y']))+1e-8)
+			if FLAGS.aspect == -1:  self.loss_vec = tf.reduce_mean(loss_mat, 1)
+			else:			 		self.loss_vec = loss_mat[:, FLAGS.aspect]
+
+			self.loss = tf.reduce_mean(self.loss_vec)
+			variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Encoder')
+			l2_cost   = tf.add_n([tf.nn.l2_loss(v) for v in variables])
+			cost_enc  = self.loss + l2_cost * self.placeholders['lambda']
+
+			self.train_e = create_gradients(cost_enc, variables, FLAGS.learning_rate)
+			tf.summary.histogram('length',length)
+			tf.summary.histogram('Loss_Vec',self.loss_vec)
+			tf.summary.histogram('Predictions', preds[:,FLAGS.aspect])
+			tf.summary.histogram('Y', self.placeholders['y'][:,FLAGS.aspect])
+			tf.summary.scalar('Encoder Cost', cost_enc)
 
 
 
@@ -246,10 +258,11 @@ class Model(object):
 									self.generator.train_g, self.encoder.train_e, 
 									self.generator.reg, self.generator.obj, 
 									self.encoder.loss, self.generator.z, 
-									self.global_step],
+									self.global_step, self.generator.probs],
 									feed_dict=self.train_fd(bx, by))
 				writer.add_summary(result[0], result[7])
 				
+
 				scost += result[3]
 				ocost += result[4]
 				tcost += result[5]
