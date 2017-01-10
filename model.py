@@ -1,5 +1,5 @@
 from layers import LSTM, Layer, EmbeddingLayer, BiDirLSTM, Layer2
-from utils_  import VarScopeClass, NameScopeClass, preprocess, read_data, create_gradients
+from utils  import VarScopeClass, NameScopeClass, preprocess, read_data, create_gradients
 
 import tensorflow as tf
 import numpy as np
