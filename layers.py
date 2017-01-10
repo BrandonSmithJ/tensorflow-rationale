@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf 
 import gzip
 
-from utils import create_variables
+from utils_ import create_variables
 
 
 class EmbeddingLayer(object):
@@ -66,10 +66,16 @@ class Layer(object):
     def __init__(self, in_size, out_size, activation='tanh', name='', **kwargs):
         self.in_size, self.out_size = in_size, out_size
         self.W, self.b  = create_variables([in_size, out_size], name)
-        self.activation = tf.nn.softmax#getattr(tf, activation) 
+        self.activation = getattr(tf, activation) 
 
     def forward(self, x):    
+        # Reshape to two dimensions, multiply, reshape back to n-dimensional tensor  
+        # x2d   = tf.reshape(x, [-1, self.in_size])
         vals  = tf.nn.xw_plus_b(x, self.W, self.b, name='Wx_b')
+        # shape = tf.shape(x)
+        # shape = tf.slice(shape, [0], [tf.shape(shape)[0]-1])
+        # shape = tf.concat_v2([shape, [self.out_size]], 0)
+        # vals  = tf.reshape(vals, shape)
         return self.activation(vals)
 
 class Layer2(object):
@@ -80,7 +86,13 @@ class Layer2(object):
         self.activation = getattr(tf, activation) 
 
     def forward(self, x):    
+        # Reshape to two dimensions, multiply, reshape back to n-dimensional tensor  
         vals = tf.map_fn(lambda z: tf.nn.xw_plus_b(z, self.W, self.b), x, dtype=tf.float32)
+        # vals  = tf.nn.xw_plus_b(x2d, self.W, self.b, name='Wx_b')
+        # shape = tf.shape(x)
+        # shape = tf.slice(shape, [0], [tf.shape(shape)[0]-1])
+        # shape = tf.concat_v2([shape, [self.out_size]], 0)
+        # vals  = tf.reshape(vals, shape)
         return self.activation(vals)
 
 
@@ -92,10 +104,10 @@ class LSTM(object):
 
         lstm = tf.nn.rnn_cell.BasicLSTMCell(self.in_size)
         self.cell  = tf.nn.rnn_cell.MultiRNNCell([lstm] * depth)
-        self.state = None
+        self.state = None#self.cell.zero_state(batch_size, tf.float32)
         self.batch = batch_size
 
-    def forward(self, x, mask, length=None):        
+    def forward(self, x, length=None):        
         x.set_shape([None, self.batch, self.in_size])
         vals, self.state = tf.nn.dynamic_rnn(self.cell, x, 
             time_major     = True, 
@@ -103,7 +115,37 @@ class LSTM(object):
             sequence_length= length,
             # initial_state  = self.state,
         )
-        return vals
+        # shape = tf.shape(x)
+        # max_time = shape[0]
+        # batch_size = self.batch#shape[1]
+        # input_depth = self.in_size#shape[2]
+        # inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
+        # inputs_ta = inputs_ta.unpack(x)
+        # length = tf.to_int32(length)
+        # self.prior_state = self.cell.zero_state(batch_size, tf.float32)
+        # mask = tf.to_float(mask)
+        # def loop_fn(time, cell_output, cell_state, loop_state):
+        #   emit_output = cell_output  # == None for time == 0
+        #   if cell_output is None:  # time == 0
+        #     next_cell_state = self.cell.zero_state(batch_size, tf.float32)
+        #   else:
+        #     emit_output *= mask[time]
+        #     next_cell_state = tf.cond(
+        #         tf.cast(mask[time], tf.bool),
+        #         lambda:cell_state,
+        #         lambda:self.prior_state)
+        #     self.prior_state = next_cell_state
+        #   elements_finished = (time >= length)
+        #   finished = tf.reduce_all(elements_finished)
+        #   next_input = tf.cond(
+        #       tf.cast(tf.to_float(finished) * mask[time], tf.bool),
+        #       lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+        #       lambda: inputs_ta.read(time))
+        #   next_loop_state = None
+        #   return (elements_finished, next_input, next_cell_state,
+        #           emit_output, next_loop_state)
+        # vals, self.state, _ = tf.nn.raw_rnn(self.cell, loop_fn)
+        return vals#.pack()
 
 
 class BiDirLSTM(object):
@@ -118,8 +160,10 @@ class BiDirLSTM(object):
         self.batch = batch_size
 
     def forward(self, x, length=None):        
-        used   = tf.sign(tf.reduce_max(tf.abs(x), reduction_indices=2))
-        length = tf.reduce_sum(used, reduction_indices=0)
+        if length is None:
+            used   = tf.sign(tf.reduce_max(tf.abs(x), reduction_indices=2))
+            length = tf.reduce_sum(used, reduction_indices=0)
+        x.set_shape([None, None, self.in_size])       
         self.l = length
         vals, self.state = tf.nn.bidirectional_dynamic_rnn(self.fcell, self.bcell, x, 
             time_major     = True, 
@@ -128,5 +172,5 @@ class BiDirLSTM(object):
             # initial_state_fw = self.state[0],
             # initial_state_bw = self.state[1],
         )
-        return tf.concat_v2(vals, 2)
+        return tf.concat_v2(vals, 2)#[vals[0], tf.reverse_v2(vals[1], 2)], 2)
 

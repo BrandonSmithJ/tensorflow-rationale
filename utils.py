@@ -5,16 +5,29 @@ import gzip
 def create_variables(shape, name=''): 
 	''' Creates both weight and bias Variables '''
 
-	W_init = tf.truncated_normal_initializer(stddev=0.01)
+	W_init = tf.truncated_normal_initializer(stddev=0.001)
 	b_init = tf.constant_initializer(0.0)
 
 	W = tf.get_variable(name+'_W', shape,       initializer=W_init)
 	b = tf.get_variable(name+'_b', [shape[-1]], initializer=b_init)
 
 	scope = W.name.split('/')[-2] if not name else name
-	tf.summary.histogram(scope + '_Weights', W)
-	tf.summary.histogram(scope + '_Bias', b) 
+	# tf.summary.histogram(scope + '_Weights', W)
+	# tf.summary.histogram(scope + '_Bias', b) 
 	return W, b
+
+
+def create_gradients(error, var_list, learning_rate, step=None):
+	''' Manually apply gradient calculations for clipping and summaries '''
+	opt   = tf.train.AdamOptimizer(learning_rate)
+	grads = opt.compute_gradients(error, var_list=var_list)
+
+	for i, (grad, var) in enumerate(grads):
+		tf.summary.histogram(var.name, var)
+		if grad is not None:
+			grads[i] = (tf.clip_by_norm(grad, 5), var)
+			tf.summary.histogram(var.name + '/gradient', grad)
+	return opt.apply_gradients(grads, global_step=step)
 
 
 def scope(name, f_scope=tf.name_scope):
@@ -55,7 +68,8 @@ def preprocess(data, batch_size, pad_id, max_len):
 	x,y = data
 
 	perm = list(range(len(x)))
-	perm = sorted(perm, key=lambda i: len(x[i]))
+	np.random.shuffle(perm)
+	# perm = sorted(perm, key=lambda i: len(x[i]))
 	
 	x = [ x[i] for i in perm ]
 	y = [ y[i] for i in perm ]
