@@ -27,7 +27,9 @@ In other words, the generator determines which text must be selected by graduall
 This reinforcement pattern must be balanced to acheive learning - too much weight on either component overwhelms the other and the model converges suboptimally. 
 
 
-Initially, the generator randomly selects text, which appears as a uniform noise in the visualization. As the encoder provides feedback for the selections, the selection begins taking on a more sparse representation, eventually converging to groups of words in each text sample.
+Initially the generator randomly selects text, which appears as a uniform noise in the visualization. As the encoder provides feedback for the selections, the generator begins creating a more sparse representation, eventually converging to groups of words in each text sample. The two images below show different points in the training process, with the latter beginning to show groups of rationals emerging (where the vertical axis represents the text document, and the horizontal represents the batch dimension). 
+
+<img src="https://cloud.githubusercontent.com/assets/1062829/21827821/48be153c-d75b-11e6-955a-8869cd89e123.png">
 
 
 
