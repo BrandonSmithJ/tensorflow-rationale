@@ -37,7 +37,7 @@ The model as constructed tends to bounce between a small sampling rate and a lar
 <br>
 
 <br>
-Perfect convergence (on the current dataset) is likely impossible, due to the subjectivity between scores and reviews. Take for example the following (test set) sample:
+Perfect convergence (on the current dataset) is likely impossible due to the subjectivity between scores and reviews. Take for example the following (test set) sample:
 <br>
 
 <img src="https://cloud.githubusercontent.com/assets/1062829/22362673/72d31a1e-e432-11e6-8d3c-256e35002a8d.png">
