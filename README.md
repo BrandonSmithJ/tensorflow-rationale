@@ -34,7 +34,7 @@ Initially the generator randomly selects text, which appears as a uniform noise 
 
 The model as constructed tends to bounce between a small sampling rate and a large on, primarily due to adding a higher cost to the evaluation function at both ends (too little text and too much). This has the effect of allowing the model to recheck previously discarded text later in training, thereby giving a chance to re-evaluate in the context of better learned weights. This also causes a slower overall convergence, but in essence performs a regularization on selections. Alternative cost functions may speed up the convergence to text segments by penalizing small chains of text higher than longer ones, in a more explicit manner than currently implemented.
 <br>
-
+<br>
 <br>
 Perfect convergence (on the current dataset) is likely impossible, due to the subjectivity between scores and reviews. Take for example the following (test set) sample:
 <br>
@@ -54,4 +54,4 @@ For many however, the network performs well both on the prediction and the text 
 <img src="https://cloud.githubusercontent.com/assets/1062829/22362724/c531c0f8-e432-11e6-97cf-3e17a96cf691.png">
 <br>
 <br>
-One thing to note: though all these samples are predicted on the given rating for 'taste', the network doesn't necessarily select text which deals with taste directly (e.g. specific flavors). Instead, it selects the text which is most predictive of the score given; this text is entirely dependent upon what the sample writers thought contributed to score they gave.
+One thing to note: though these samples are predicted on the given rating for 'taste', the network doesn't necessarily select text which deals with taste directly (e.g. specific flavors). Instead, it selects the text which is most predictive of the score given; this text is entirely dependent upon what the sample writers thought contributed to score they gave.
