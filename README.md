@@ -32,9 +32,10 @@ This reinforcement pattern must be balanced to acheive learning - too much weigh
 
 Initially the generator randomly selects text, which appears as a uniform noise in the visualization. As the encoder provides feedback for the selections, the generator begins creating a more sparse representation, eventually converging to groups of words in each text sample. The images below show different points in the training process, with the latter showing groups of rationals emerging (where the vertical axis represents the text document, and the horizontal represents the batch dimension). The dark blue portions of the images represent padding, which is ignored by the model.
 
-The model as constructed tends to bounce between a small sampling rate and a large on, primarily due to adding a higher cost to the evaluation function at both ends (too little text and too much). This has the effect of allowing the model to recheck previously discarded text later in training, thereby giving a chance to re-evaluate in the context of better learned weights. This also causes a slower overall convergence, but in essence performs a regularization on selections. Alternative cost functions may speed up the convergence to text segments by penalizing small chains of text higher than longer ones, in a more explicit manner than currently implemented.
+The model as constructed tends to bounce between a small sampling rate and a large one, primarily due to adding a higher cost to the evaluation function at both ends (too little text and too much). This has the effect of allowing the model to recheck previously discarded text later in training, thereby giving a chance to re-evaluate in the context of better learned weights. This also causes a slower overall convergence, but in essence performs a regularization on selections. Alternative cost functions may speed up the convergence to text segments by penalizing small chains of text higher than longer ones, in a more explicit manner than currently implemented.
 <br>
 <br>
+
 <br>
 Perfect convergence (on the current dataset) is likely impossible, due to the subjectivity between scores and reviews. Take for example the following (test set) sample:
 <br>
