@@ -34,23 +34,24 @@ Initially the generator randomly selects text, which appears as a uniform noise 
 
 The model as constructed tends to bounce between a small sampling rate and a large on, primarily due to adding a higher cost to the evaluation function at both ends (too little text and too much). This has the effect of allowing the model to recheck previously discarded text later in training, thereby giving a chance to re-evaluate in the context of better learned weights. This also causes a slower overall convergence, but in essence performs a regularization on selections. Alternative cost functions may speed up the convergence to text segments by penalizing small chains of text higher than longer ones, in a more explicit manner than currently implemented.
 <br>
+
 <br>
 Perfect convergence (on the current dataset) is likely impossible, due to the subjectivity between scores and reviews. Take for example the following (test set) sample:
 <br>
-<img src="https://cloud.githubusercontent.com/assets/1062829/22362673/72d31a1e-e432-11e6-8d3c-256e35002a8d.png", width=650, align="center">
+<img src="https://cloud.githubusercontent.com/assets/1062829/22362673/72d31a1e-e432-11e6-8d3c-256e35002a8d.png">
 <br>
 <br>
 It would be difficult to rationalize the prediction even as a human, due to the low information density and inherent ambiguity.
 As well, outliers tend to be difficult for the network to predict:
 <br>
-<img src="https://cloud.githubusercontent.com/assets/1062829/22362705/af72517e-e432-11e6-9936-17652821d704.png", width=650>
+<img src="https://cloud.githubusercontent.com/assets/1062829/22362705/af72517e-e432-11e6-9936-17652821d704.png">
 <br>
 <br>
 For many however, the network performs well both on the prediction and the text selection to justify that prediction:
 <br>
-<img src="https://cloud.githubusercontent.com/assets/1062829/22362712/b9a12fb2-e432-11e6-8c5e-068bcdf775e8.png", width=650>
+<img src="https://cloud.githubusercontent.com/assets/1062829/22362712/b9a12fb2-e432-11e6-8c5e-068bcdf775e8.png">
 <br>
-<img src="https://cloud.githubusercontent.com/assets/1062829/22362724/c531c0f8-e432-11e6-97cf-3e17a96cf691.png", width=650>
+<img src="https://cloud.githubusercontent.com/assets/1062829/22362724/c531c0f8-e432-11e6-97cf-3e17a96cf691.png">
 <br>
 <br>
 One thing to note: though all these samples are predicted on the given rating for 'taste', the network doesn't necessarily select text which deals with taste directly (e.g. specific flavors). Instead, it selects the text which is most predictive of the score given; this text is entirely dependent upon what the sample writers thought contributed to score they gave.
