@@ -28,7 +28,7 @@ This reinforcement pattern must be balanced to acheive learning - too much weigh
 
 ### Performance
 
-<img src="https://cloud.githubusercontent.com/assets/1062829/22362597/bb73bf2c-e431-11e6-804c-ccf8c17c3965.png" align="right", width=550>
+<img src="https://cloud.githubusercontent.com/assets/1062829/22362597/bb73bf2c-e431-11e6-804c-ccf8c17c3965.png" width=550 align="right">
 
 Initially the generator randomly selects text, which appears as a uniform noise in the visualization. As the encoder provides feedback for the selections, the generator begins creating a more sparse representation, eventually converging to groups of words in each text sample. The images below show different points in the training process, with the latter showing groups of rationals emerging (where the vertical axis represents the text document, and the horizontal represents the batch dimension). The dark blue portions of the images represent padding, which is ignored by the model.
 
